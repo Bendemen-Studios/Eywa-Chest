@@ -1,7 +1,7 @@
 chests:
   default-limit: 2
   max-limit: 100
-  autosell-interval-seconds: 5
+  autosell-interval-seconds: 10
   prevent-hoppers: true
   protect-from-explosions: true
   item-name: "&b&lEywaChest"
