@@ -1,0 +1,15 @@
+chests:
+  default-limit: 2
+  max-limit: 100
+  autosell-interval-seconds: 5
+  prevent-hoppers: true
+  protect-from-explosions: true
+  item-name: "&b&lEywaChest"
+economy:
+  provider: ExcellentEconomy
+  default-currency: coins
+  allowed-currencies:
+    - coins
+    - tokens
+messages:
+  prefix: "&8[&bEywaChest&8] "

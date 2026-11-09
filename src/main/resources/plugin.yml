@@ -1,0 +1,15 @@
+name: EywaChest
+version: 1.0.0
+main: studio.bendemen.eywachest.EywaChestPlugin
+api-version: '1.26'
+softdepend: [ExcellentEconomy, ExcellentShop]
+commands:
+  eywachest:
+    description: EywaChest commands
+permissions:
+  eywachest.use:
+    default: true
+  eywachest.give:
+    default: op
+  eywachest.chestadmin:
+    default: op
