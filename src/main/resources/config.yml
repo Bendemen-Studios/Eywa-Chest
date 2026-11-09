@@ -6,6 +6,7 @@ chests:
   protect-from-explosions: true
   item-name: "&b&lEywaChest"
 economy:
+  moonshards-currency: moonshards
   provider: ExcellentEconomy
   default-currency: coins
   allowed-currencies:
