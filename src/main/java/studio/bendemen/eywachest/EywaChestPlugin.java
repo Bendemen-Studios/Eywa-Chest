@@ -77,7 +77,7 @@ public final class EywaChestPlugin extends JavaPlugin implements Listener, Comma
         inv.setItem(13,menuItem(Material.CLOCK,"&bEywaChest tiers",List.of("&7Tier 1: 5 minutes","&7Tier 2: 3 minutes","&7Tier 3: 1 minute","&7Tier 4: 30 seconds","&7Tier 5: 10 seconds","&8Double chest = double upgrade cost")));
         upgradeMenus.put(p.getUniqueId(),r.id());p.openInventory(inv);
     }
-    private String formatTime(int seconds){return seconds>=60?(seconds/60)+" minuut"+(seconds/60==1?"":"en"):seconds+" seconden";}
+    private String formatTime(int seconds){return seconds>=60?(seconds/60)+" minute"+(seconds/60==1?"":"s"):seconds+" seconds";}
     @EventHandler public void onUpgradeMenuClick(InventoryClickEvent e){
         if(!(e.getWhoClicked() instanceof Player p)||!upgradeMenus.containsKey(p.getUniqueId()))return;if(!UPGRADE_TITLE.equals(e.getView().getTitle()))return;e.setCancelled(true);if(e.getRawSlot()!=15)return;
         String id=upgradeMenus.get(p.getUniqueId());ChestData d=chests.get(id);if(d==null){p.closeInventory();upgradeMenus.remove(p.getUniqueId());msg(p,"&cDeze EywaChest bestaat niet meer.");return;}if(d.tier()>=5){msg(p,"&eDeze EywaChest is al tier 5.");return;}
