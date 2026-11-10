@@ -1,28 +1,22 @@
 # EywaChest
 
-Paper 1.26.3 chest autosell plugin foundation for EywaMC.
+Paper 26.3 plugin foundation for EywaMC. Requires Java 25.
 
-## Dependencies
-- ExcellentEconomy 2.8.0
-- ExcellentShop 5.1.7
+Dependencies: ExcellentEconomy 2.8.0 and ExcellentShop 5.1.7.
 
-## Commands
-- `/eywachest give <player> [amount]` — OP, console, or `eywachest.give`
-- `/eywachest limit <player> <amount>` and `upgrade <player> <extra>` — OP, console, or `eywachest.chestadmin`
+Commands:
+- `/eywachest give <player> [amount]`
+- `/eywachest limit <player> <amount>`
+- `/eywachest upgrade <player> <extra>`
 - `/eywachest info`
-- `/eywachest trust <player>` / `untrust <player>` — look at the target EywaChest
-- `/eywachest currency <id>` — choose per-chest currency
+- `/eywachest trust <player>` and `/eywachest untrust <player>` (look at the chest)
+- `/eywachest currency <id>` (look at the chest)
 - `/eywachest reload`
 
-Default limit: 2. Double chests count as one. Data persists in plugins/EywaChest/data.yml.
+Permissions: `eywachest.use`, `eywachest.give`, `eywachest.chestadmin`.
 
-## Permissions
-- `eywachest.use` (default true)
-- `eywachest.give` (default op)
-- `eywachest.chestadmin` (default op)
+Default chest limit is 2; double chests are intended to count as one. Data is stored in `plugins/EywaChest/data.yml`.
 
-## Build
-Run `mvn -U clean package`.
+Build with `mvn -U clean package`.
 
-## Integration status
-This initial branch implements chest issuance, limits, trust access, currency selection, persistence and protections. Automatic selling remains disabled until the exact ExcellentShop 5.1.7 price lookup and ExcellentEconomy 2.8.0 deposit API signatures are verified. No items are removed without confirmed payment.
+**Current limitation:** autoselling is not active yet. The sale adapter must be implemented and verified against the installed ExcellentShop and ExcellentEconomy APIs before this is a production-ready autosell plugin.
