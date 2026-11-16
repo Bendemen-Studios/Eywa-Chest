@@ -120,7 +120,76 @@ public final class EywaChestPlugin extends JavaPlugin implements Listener, Comma
             }
         }catch(Exception ex){getLogger().warning("Could not create autosell notification: "+ex.getMessage());}
     }
-    private void sellAll(){long now=System.currentTimeMillis();for(var entry:new ArrayList<>(chests.entrySet())){String id=entry.getKey();ChestData data=entry.getValue();int tier=Math.max(1,Math.min(5,data.tier()));long interval=TIER_SECONDS[tier-1]*1000L;long due=nextSellAt.computeIfAbsent(id,k->now+interval);if(now<due||selling.contains(id))continue;nextSellAt.put(id,now+interval);Player owner=Bukkit.getPlayer(data.owner());if(owner==null)continue;String location=data.locations().stream().findFirst().orElse(null);Block block=location==null?null:resolveBlock(location);ChestRef chest=block==null?null:findChest(block);if(chest==null||chest.inventory().isEmpty())continue;if(!selling.add(id))continue;try{Plugin shop=Bukkit.getPluginManager().getPlugin("ExcellentShop");if(shop==null||!shop.isEnabled()){selling.remove(id);continue;}Object module=shop.getClass().getMethod("getVirtualShop").invoke(shop);if(module==null){selling.remove(id);continue;}Class<?> callbackType=Class.forName("su.nightexpress.excellentshop.shop.transaction.TransactionCallback");Object callback=Proxy.newProxyInstance(callbackType.getClassLoader(),new Class<?>[]{callbackType},(proxy,method,args)->{if(method.getName().equals("accept")&&args!=null&&args.length==1){Object completed=args[0];boolean success=Boolean.TRUE.equals(completed.getClass().getMethod("successful").invoke(completed));if(success)notifySale(owner,completed);selling.remove(id);}return null;});Method sellMethod=module.getClass().getMethod("sellAll",Player.class,Inventory.class,boolean.class,callbackType);sellMethod.invoke(module,owner,chest.inventory(),true,callback);selling.remove(id);}catch(Exception ex){selling.remove(id);getLogger().warning("ExcellentShop autosell failed for chest "+id+": "+ex.getClass().getSimpleName()+": "+ex.getMessage());}}}
+    private void sellAll(){
+        long now=System.currentTimeMillis();
+        for(var entry:new ArrayList<>(chests.entrySet())){
+            String id=entry.getKey();
+            ChestData data=entry.getValue();
+            int tier=Math.max(1,Math.min(5,data.tier()));
+            long interval=TIER_SECONDS[tier-1]*1000L;
+            long due=nextSellAt.computeIfAbsent(id,k->now+interval);
+            if(now<due||selling.contains(id))continue;
+            nextSellAt.put(id,now+interval);
+            Player owner=Bukkit.getPlayer(data.owner());
+            if(owner==null)continue;
+            String location=data.locations().stream().findFirst().orElse(null);
+            Block block=location==null?null:resolveBlock(location);
+            ChestRef chest=block==null?null:findChest(block);
+            if(chest==null||chest.inventory().isEmpty())continue;
+            if(!selling.add(id))continue;
+            try{
+                Plugin shop=Bukkit.getPluginManager().getPlugin("ExcellentShop");
+                if(shop==null||!shop.isEnabled()){
+                    selling.remove(id);
+                    continue;
+                }
+
+                // Use ExcellentShop's official transaction pipeline. This runs its normal
+                // product, permission, stock and per-player sell-limit validators.
+                Object module=shop.getClass().getMethod("getVirtualShop").invoke(shop);
+                if(module==null){
+                    selling.remove(id);
+                    continue;
+                }
+
+                Class<?> tradeTypeClass=Class.forName("su.nightexpress.excellentshop.api.product.TradeType");
+                @SuppressWarnings({"unchecked","rawtypes"})
+                Object sellType=Enum.valueOf((Class<? extends Enum>)tradeTypeClass.asSubclass(Enum.class),"SELL");
+                Class<?> rawClass=Class.forName("su.nightexpress.excellentshop.api.transaction.ERawTransaction");
+                Object builder=rawClass.getMethod("builder",Player.class,tradeTypeClass).invoke(null,owner,sellType);
+                builder=builder.getClass().getMethod("setUserInventory",Inventory.class).invoke(builder,chest.inventory());
+                builder=builder.getClass().getMethod("addItems",Inventory.class).invoke(builder,chest.inventory());
+
+                @SuppressWarnings("unchecked")
+                Collection<Object> availableShops=(Collection<Object>)module.getClass().getMethod("getShops",Player.class).invoke(module,owner);
+                if(availableShops==null||availableShops.isEmpty()){
+                    selling.remove(id);
+                    continue;
+                }
+                builder=builder.getClass().getMethod("targetShops",Collection.class).invoke(builder,availableShops);
+                Object transaction=builder.getClass().getMethod("build").invoke(builder);
+
+                Class<?> callbackType=Class.forName("su.nightexpress.excellentshop.shop.transaction.TransactionCallback");
+                Object callback=Proxy.newProxyInstance(callbackType.getClassLoader(),new Class<?>[]{callbackType},(proxy,method,args)->{
+                    if(method.getName().equals("accept")&&args!=null&&args.length==1){
+                        try{
+                            Object completed=args[0];
+                            boolean success=Boolean.TRUE.equals(completed.getClass().getMethod("successful").invoke(completed));
+                            if(success)notifySale(owner,completed);
+                        }finally{
+                            selling.remove(id);
+                        }
+                    }
+                    return null;
+                });
+                Method proceed=module.getClass().getMethod("proceedTransaction",rawClass,callbackType);
+                proceed.invoke(module,transaction,callback);
+            }catch(Exception ex){
+                selling.remove(id);
+                getLogger().warning("ExcellentShop autosell transaction failed for chest "+id+": "+ex.getClass().getSimpleName()+": "+ex.getMessage());
+            }
+        }
+    }
     private void loadData(){java.io.File f=new java.io.File(getDataFolder(),"data.yml");if(!f.exists())return;var y=org.bukkit.configuration.file.YamlConfiguration.loadConfiguration(f);var cs=y.getConfigurationSection("chests");if(cs!=null)for(String k:cs.getKeys(false)){String p="chests."+k;chests.put(k,new ChestData(UUID.fromString(y.getString(p+".owner")),y.getString(p+".currency","coins"),new HashSet<>(y.getStringList(p+".locations")),Math.max(1,Math.min(5,y.getInt(p+".tier",1)))));}var ls=y.getConfigurationSection("limits");if(ls!=null)for(String k:ls.getKeys(false))limits.put(UUID.fromString(k),ls.getInt(k));var ts=y.getConfigurationSection("trusted");if(ts!=null)for(String k:ts.getKeys(false)){Set<UUID> ids=new HashSet<>();for(String v:y.getStringList("trusted."+k))ids.add(UUID.fromString(v));trusted.put(k,ids);}}
     private void saveData(){var y=new org.bukkit.configuration.file.YamlConfiguration();for(var e:chests.entrySet()){String p="chests."+e.getKey();y.set(p+".owner",e.getValue().owner().toString());y.set(p+".currency",e.getValue().currency());y.set(p+".locations",new ArrayList<>(e.getValue().locations()));y.set(p+".tier",e.getValue().tier());}limits.forEach((id,n)->y.set("limits."+id,n));trusted.forEach((id,ids)->y.set("trusted."+id,ids.stream().map(UUID::toString).toList()));try{getDataFolder().mkdirs();y.save(new java.io.File(getDataFolder(),"data.yml"));}catch(java.io.IOException ex){getLogger().severe("Failed saving data: "+ex.getMessage());}}
 }
