@@ -37,6 +37,8 @@ public final class EywaChestPlugin extends JavaPlugin implements Listener, Comma
     private final Map<String,Long> nextSellAt=new ConcurrentHashMap<>();
     private final Set<String> selling=ConcurrentHashMap.newKeySet();
     private final Map<UUID,Long> lastActivityAt=new ConcurrentHashMap<>();
+    private final Map<UUID,Long> activeRewardsSeconds=new ConcurrentHashMap<>();
+    private boolean activeRewardsFullDetected=false;
     private NamespacedKey itemKey;
     private record ChestData(UUID owner,String currency,Set<String> locations,int tier){}
     private record ChestRef(String id,Set<Block> blocks,Inventory inventory){}
@@ -67,6 +69,25 @@ public final class EywaChestPlugin extends JavaPlugin implements Listener, Comma
       case "currency"->{if(!(s instanceof Player p))return usage(s,"Players only.");if(a.length!=2)return usage(s,"/eywachest currency <currency-id> (look at chest)");Block b=p.getTargetBlockExact(6);ChestRef r=b==null?null:findChest(b);if(r==null||!isOwner(r,p.getUniqueId()))return usage(s,"Look at your own EywaChest within 6 blocks.");List<String> allowed=getConfig().getStringList("economy.allowed-currencies");if(!allowed.isEmpty()&&!allowed.contains(a[1]))return usage(s,"Currency is not allowed in config.yml.");ChestData d=getData(r);chests.put(r.id(),new ChestData(d.owner(),a[1],d.locations(),d.tier()));saveData();msg(s,"&aThis EywaChest now uses currency: "+a[1]);}
       case "reload"->{if(!admin(s))return usage(s,"No permission.");reloadConfig();msg(s,"&aConfig reloaded.");}
       default->msg(s,"&cUnknown subcommand.");}return true;
+    }
+    private void pollActiveRewards(Player player){
+        if(!Bukkit.getPluginManager().isPluginEnabled("PlaceholderAPI"))return;
+        try{
+            Class<?> papi=Class.forName("me.clip.placeholderapi.PlaceholderAPI");
+            String raw=(String)papi.getMethod("setPlaceholders",Player.class,String.class)
+                    .invoke(null,player,"%activerewards_active_seconds%");
+            if(raw==null||raw.equalsIgnoreCase("%activerewards_active_seconds%"))return;
+            String value=raw.trim().replace(",", "");
+            if(!value.matches("\\d+(\\.\\d+)?"))return;
+            long seconds=(long)Double.parseDouble(value);
+            activeRewardsFullDetected=true;
+            Long previous=activeRewardsSeconds.put(player.getUniqueId(),seconds);
+            if(previous!=null&&seconds>previous)markActive(player);
+        }catch(ClassNotFoundException ignored){
+            // PlaceholderAPI is not installed; use EywaChest's built-in AFK detector.
+        }catch(Exception ex){
+            getLogger().fine("ActiveRewards placeholder check unavailable: "+ex.getMessage());
+        }
     }
     private long afkTimeoutMillis(){return Math.max(1L,getConfig().getLong("chests.afk-after-seconds",300L))*1000L;}
     private void markActive(Player player){lastActivityAt.put(player.getUniqueId(),System.currentTimeMillis());}
@@ -102,7 +123,7 @@ public final class EywaChestPlugin extends JavaPlugin implements Listener, Comma
     @EventHandler public void onPlayerChat(AsyncPlayerChatEvent event){markActive(event.getPlayer());}
     @EventHandler public void onPlayerCommand(PlayerCommandPreprocessEvent event){markActive(event.getPlayer());}
     @EventHandler public void onPlayerJoin(PlayerJoinEvent event){markActive(event.getPlayer());}
-    @EventHandler public void onPlayerQuit(PlayerQuitEvent event){lastActivityAt.remove(event.getPlayer().getUniqueId());}
+    @EventHandler public void onPlayerQuit(PlayerQuitEvent event){lastActivityAt.remove(event.getPlayer().getUniqueId());activeRewardsSeconds.remove(event.getPlayer().getUniqueId());}
     private int countOwned(UUID id){return(int)chests.values().stream().filter(d->d.owner().equals(id)).count();}
     private boolean isOwner(ChestRef r,UUID id){ChestData d=getData(r);return d!=null&&d.owner().equals(id);}
     private boolean allowed(ChestData d,String key,UUID p){return d.owner().equals(p)||trusted.getOrDefault(key,Set.of()).contains(p);}
