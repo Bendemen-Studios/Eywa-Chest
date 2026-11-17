@@ -2,7 +2,7 @@ name: EywaChest
 version: 1.0.0
 main: studio.bendemen.eywachest.EywaChestPlugin
 api-version: '26.3'
-softdepend: [ExcellentEconomy, ExcellentShop]
+softdepend: [ExcellentEconomy, ExcellentShop, PlaceholderAPI]
 commands:
   eywachest:
     description: EywaChest commands
