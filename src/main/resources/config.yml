@@ -2,6 +2,7 @@ chests:
   default-limit: 2
   max-limit: 100
   autosell-interval-seconds: 10
+  afk-after-seconds: 300 # Match ActiveRewards Free default: 5 minutes without activity
   prevent-hoppers: true
   protect-from-explosions: true
   item-name: "&b&lEywaChest"
