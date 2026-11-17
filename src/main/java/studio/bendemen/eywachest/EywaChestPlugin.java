@@ -11,6 +11,11 @@ import org.bukkit.event.block.*;
 import org.bukkit.event.entity.EntityExplodeEvent;
 import org.bukkit.event.inventory.*;
 import org.bukkit.event.player.PlayerInteractEvent;
+import org.bukkit.event.player.PlayerMoveEvent;
+import org.bukkit.event.player.PlayerJoinEvent;
+import org.bukkit.event.player.PlayerQuitEvent;
+import org.bukkit.event.player.PlayerCommandPreprocessEvent;
+import org.bukkit.event.player.AsyncPlayerChatEvent;
 import org.bukkit.inventory.*;
 import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.persistence.PersistentDataType;
@@ -31,6 +36,7 @@ public final class EywaChestPlugin extends JavaPlugin implements Listener, Comma
     private final Map<UUID,String> upgradeMenus=new ConcurrentHashMap<>();
     private final Map<String,Long> nextSellAt=new ConcurrentHashMap<>();
     private final Set<String> selling=ConcurrentHashMap.newKeySet();
+    private final Map<UUID,Long> lastActivityAt=new ConcurrentHashMap<>();
     private NamespacedKey itemKey;
     private record ChestData(UUID owner,String currency,Set<String> locations,int tier){}
     private record ChestRef(String id,Set<Block> blocks,Inventory inventory){}
@@ -39,6 +45,7 @@ public final class EywaChestPlugin extends JavaPlugin implements Listener, Comma
         Bukkit.getPluginManager().registerEvents(this,this);
         Objects.requireNonNull(getCommand("eywachest")).setExecutor(this);
         loadData();
+        for(Player player:Bukkit.getOnlinePlayers())lastActivityAt.put(player.getUniqueId(),System.currentTimeMillis());
         Bukkit.getScheduler().runTaskTimer(this,this::sellAll,20L,20L);
     }
     @Override public void onDisable(){saveData();}
@@ -61,6 +68,41 @@ public final class EywaChestPlugin extends JavaPlugin implements Listener, Comma
       case "reload"->{if(!admin(s))return usage(s,"No permission.");reloadConfig();msg(s,"&aConfig reloaded.");}
       default->msg(s,"&cUnknown subcommand.");}return true;
     }
+    private long afkTimeoutMillis(){return Math.max(1L,getConfig().getLong("chests.afk-after-seconds",300L))*1000L;}
+    private void markActive(Player player){lastActivityAt.put(player.getUniqueId(),System.currentTimeMillis());}
+    private boolean isActive(Player player){
+        if(player==null||!player.isOnline())return false;
+        long last=lastActivityAt.computeIfAbsent(player.getUniqueId(),id->System.currentTimeMillis());
+        return System.currentTimeMillis()-last<afkTimeoutMillis();
+    }
+    private boolean inWaterOrBubble(Location location){
+        Material here=location.getBlock().getType();
+        Material below=location.clone().subtract(0,1,0).getBlock().getType();
+        return here==Material.WATER||below==Material.WATER||here.name().equals("BUBBLE_COLUMN")||below.name().equals("BUBBLE_COLUMN");
+    }
+    private boolean nearPiston(Location location){
+        World world=location.getWorld();
+        if(world==null)return false;
+        int bx=location.getBlockX(),by=location.getBlockY(),bz=location.getBlockZ();
+        for(int x=-1;x<=1;x++)for(int y=-1;y<=1;y++)for(int z=-1;z<=1;z++){
+            if(world.getBlockAt(bx+x,by+y,bz+z).getType().name().contains("PISTON"))return true;
+        }
+        return false;
+    }
+    @EventHandler public void onPlayerMove(PlayerMoveEvent event){
+        if(event.getTo()==null)return;
+        Location from=event.getFrom(),to=event.getTo();
+        boolean rotated=Math.abs(to.getYaw()-from.getYaw())>0.5F||Math.abs(to.getPitch()-from.getPitch())>0.5F;
+        if(rotated){markActive(event.getPlayer());return;}
+        if(from.distanceSquared(to)<0.0004D)return;
+        Player player=event.getPlayer();
+        if(player.isInsideVehicle()||inWaterOrBubble(from)||inWaterOrBubble(to)||nearPiston(from)||nearPiston(to))return;
+        markActive(player);
+    }
+    @EventHandler public void onPlayerChat(AsyncPlayerChatEvent event){markActive(event.getPlayer());}
+    @EventHandler public void onPlayerCommand(PlayerCommandPreprocessEvent event){markActive(event.getPlayer());}
+    @EventHandler public void onPlayerJoin(PlayerJoinEvent event){markActive(event.getPlayer());}
+    @EventHandler public void onPlayerQuit(PlayerQuitEvent event){lastActivityAt.remove(event.getPlayer().getUniqueId());}
     private int countOwned(UUID id){return(int)chests.values().stream().filter(d->d.owner().equals(id)).count();}
     private boolean isOwner(ChestRef r,UUID id){ChestData d=getData(r);return d!=null&&d.owner().equals(id);}
     private boolean allowed(ChestData d,String key,UUID p){return d.owner().equals(p)||trusted.getOrDefault(key,Set.of()).contains(p);}
@@ -129,9 +171,9 @@ public final class EywaChestPlugin extends JavaPlugin implements Listener, Comma
             long interval=TIER_SECONDS[tier-1]*1000L;
             long due=nextSellAt.computeIfAbsent(id,k->now+interval);
             if(now<due||selling.contains(id))continue;
-            nextSellAt.put(id,now+interval);
             Player owner=Bukkit.getPlayer(data.owner());
-            if(owner==null)continue;
+            if(owner==null||!isActive(owner))continue;
+            nextSellAt.put(id,now+interval);
             String location=data.locations().stream().findFirst().orElse(null);
             Block block=location==null?null:resolveBlock(location);
             ChestRef chest=block==null?null:findChest(block);
